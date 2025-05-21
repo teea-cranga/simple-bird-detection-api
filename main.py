@@ -1,14 +1,29 @@
-from typing import Optional
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import JSONResponse
+import torch
+import io
+from PIL import Image
+from transformers import EfficientNetImageProcessor, EfficientNetForImageClassification
 
-from fastapi import FastAPI
-
+# start application
 app = FastAPI()
 
+# Loading the model and preprocessor from HuggingFace
+preprocessor = EfficientNetImageProcessor.from_pretrained("dennisjooo/Birds-Classifier-EfficientNetB2")
+model = EfficientNetForImageClassification.from_pretrained("dennisjooo/Birds-Classifier-EfficientNetB2")
 
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
+@app.post("/predict")
+async def predict_picture(file: UploadFile = File(...)):
+    
+    # read the file
+    image_bytes = await file.read()
 
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: Optional[str] = None):
-    return {"item_id": item_id, "q": q}
+    # open image using PIL
+    image = Image.open(io.BytesIO(image_bytes))
+
+    inputs = preprocessor(image, return_tensors="pt")
+    with torch.no_grad():
+        logits = model(**inputs).logits
+
+    predicted_label = logits.argmax(-1).item()
+    return JSONResponse(content={"predicted_bird": model.config.id2label[predicted_label]})
